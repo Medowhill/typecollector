@@ -1,0 +1,11 @@
+[package]
+name = "typecollector"
+version = "1.0.0"
+authors = ["Jaemin Hong <hjm0901@gmail.com>"]
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.1.11", features = ["derive"] }
+
+[package.metadata.rust-analyzer]
+rustc_private = true
