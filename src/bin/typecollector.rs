@@ -18,7 +18,9 @@ fn main() {
         }
     }
     for (name, tys) in &functions {
-        println!("{}: {:?}", name, tys);
+        if !tys.is_empty() {
+            println!("{}: {:?}", name, tys);
+        }
     }
     let tys: BTreeSet<_> = functions.into_iter().flat_map(|(_, tys)| tys).collect();
     for ty in &tys {

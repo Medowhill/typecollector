@@ -63,7 +63,10 @@ impl<'tcx> TypeVisitor<'tcx> {
             let krate = krate.as_str();
             let path = self.tcx.def_path(def_id);
             if krate == "std" || krate == "alloc" || krate == "core" {
-                return Some(format!("{}{}", krate, path.to_string_no_crate_verbose()));
+                let ty = format!("{}{}", krate, path.to_string_no_crate_verbose());
+                if !ty.starts_with("std::os::raw::") && !ty.starts_with("core::ffi::") {
+                    return Some(ty);
+                }
             }
         }
         None
@@ -116,6 +119,13 @@ pub fn run(code: &str) -> Vec<(String, BTreeSet<String>)> {
                 for id in hir.items() {
                     let item = hir.item(id);
                     if let ItemKind::Fn(sig, gen, _) = &item.kind {
+                        let def_path = tcx.def_path(item.owner_id.to_def_id());
+                        let def_path = def_path.to_string_no_crate_verbose();
+                        if def_path.starts_with("::__laertes_array::")
+                            || def_path.starts_with("::laertes_rt::")
+                        {
+                            continue;
+                        }
                         let name = item.ident.name.to_ident_string();
                         let mut visitor = TypeVisitor::new(tcx);
                         visitor.visit_fn_decl(sig.decl);
