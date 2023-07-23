@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, path::PathBuf, process::Command};
+use std::{path::PathBuf, process::Command};
 
 use rustc_data_structures::sync::Lrc;
 use rustc_errors::{
@@ -41,19 +41,16 @@ impl Emitter for NoEmitter {
 
 struct TypeVisitor<'tcx> {
     tcx: TyCtxt<'tcx>,
-    types: BTreeSet<String>,
+    types: Vec<String>,
 }
 
 impl<'tcx> TypeVisitor<'tcx> {
     fn new(tcx: TyCtxt<'tcx>) -> Self {
-        Self {
-            tcx,
-            types: BTreeSet::new(),
-        }
+        Self { tcx, types: vec![] }
     }
 
     fn add<S: AsRef<str>>(&mut self, s: S) {
-        self.types.insert(s.as_ref().to_string());
+        self.types.push(s.as_ref().to_string());
     }
 
     fn def_id_to_string(&self, def_id: DefId) -> Option<String> {
@@ -110,7 +107,7 @@ impl<'tcx> Visitor<'tcx> for TypeVisitor<'tcx> {
     }
 }
 
-pub fn run(code: &str) -> Vec<(String, BTreeSet<String>)> {
+pub fn run(code: &str) -> Vec<(String, Vec<String>)> {
     let functions = run_compiler(make_config(code), |compiler| {
         compiler.enter(|queries| {
             queries.global_ctxt().ok()?.enter(|tcx| {

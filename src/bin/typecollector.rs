@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, fs, path::PathBuf};
+use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use clap::Parser;
 use typecollector::compiler::run;
@@ -10,23 +10,32 @@ struct Args {
 
 fn main() {
     let args = Args::parse();
+
     let mut functions = vec![];
     for path in files(args.input, "rs") {
-        println!("{:?}", path);
+        if path.ends_with("tinycc/bitfields.rs") {
+            continue;
+        }
         if let Ok(code) = fs::read_to_string(path) {
             functions.extend(run(&code));
         }
     }
-    for (name, tys) in &functions {
-        if !tys.is_empty() {
-            println!("{}: {:?}", name, tys);
-        }
-    }
-    let tys: BTreeSet<_> = functions.into_iter().flat_map(|(_, tys)| tys).collect();
-    for ty in &tys {
-        println!("{}", ty);
+
+    functions.retain(|(_, tys)| !tys.is_empty());
+    println!("{}", functions.len());
+
+    let mut tys: BTreeMap<String, usize> = BTreeMap::new();
+    for ty in functions.into_iter().flat_map(|(_, tys)| tys) {
+        *tys.entry(ty).or_default() += 1;
     }
     println!("{}", tys.len());
+
+    let tys_str = tys
+        .into_iter()
+        .map(|(ty, n)| format!("{} {}", ty, n))
+        .collect::<Vec<_>>()
+        .join(", ");
+    println!("{}", tys_str);
 }
 
 fn files(path: PathBuf, ext: &str) -> Vec<PathBuf> {
