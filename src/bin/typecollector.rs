@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use clap::Parser;
-use typecollector::compiler::run;
+use typecollector::compiler;
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -11,24 +11,38 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    let mut functions = vec![];
-    for path in files(args.input, "rs") {
-        if path.ends_with("tinycc/bitfields.rs") {
-            continue;
-        }
-        if let Ok(code) = fs::read_to_string(path) {
-            functions.extend(run(&code));
-        }
-    }
+    let code = fs::read_to_string(args.input).unwrap();
+    let functions = compiler::run(&code);
 
-    functions.retain(|(_, tys)| !tys.is_empty());
-    println!("{}", functions.len());
+    let n = functions.len();
+    let n1 = functions.iter().filter(|(_, tys)| tys.is_empty()).count();
+    let n2 = functions
+        .iter()
+        .filter(|(_, tys)| !tys.is_empty() && tys.iter().all(|ty| compiler::is_c_type(ty)))
+        .count();
+    let n3 = functions
+        .iter()
+        .filter(|(_, tys)| !tys.is_empty() && tys.iter().all(|ty| !compiler::is_c_type(ty)))
+        .count();
+    let n4 = functions
+        .iter()
+        .filter(|(_, tys)| {
+            !tys.is_empty()
+                && tys.iter().any(|ty| compiler::is_c_type(ty))
+                && tys.iter().any(|ty| !compiler::is_c_type(ty))
+        })
+        .count();
 
     let mut tys: BTreeMap<String, usize> = BTreeMap::new();
     for ty in functions.into_iter().flat_map(|(_, tys)| tys) {
-        *tys.entry(ty).or_default() += 1;
+        if !compiler::is_c_type(&ty) {
+            *tys.entry(ty).or_default() += 1;
+        }
     }
-    println!("{}", tys.len());
+    let ty_n = tys.iter().map(|(_, n)| n).sum::<usize>();
+    let ty_kind_n = tys.len();
+
+    println!("{} {} {} {} {} {} {}", n, n1, n2, n3, n4, ty_n, ty_kind_n);
 
     let tys_str = tys
         .into_iter()
@@ -36,17 +50,4 @@ fn main() {
         .collect::<Vec<_>>()
         .join(", ");
     println!("{}", tys_str);
-}
-
-fn files(path: PathBuf, ext: &str) -> Vec<PathBuf> {
-    if path.is_dir() {
-        fs::read_dir(path)
-            .unwrap()
-            .flat_map(|entry| files(entry.unwrap().path(), ext))
-            .collect()
-    } else if path.extension().and_then(|x| x.to_str()) == Some(ext) {
-        vec![path]
-    } else {
-        vec![]
-    }
 }

@@ -39,6 +39,39 @@ impl Emitter for NoEmitter {
     }
 }
 
+static C_TYPE_PREFIXES: [&str; 6] = [
+    "std::os::raw::",
+    "std::os::fd::raw::",
+    "std::os::unix::raw::",
+    "std::os::linux::raw::",
+    "core::ffi::",
+    "libc::",
+];
+
+static C_PRIMITIVE_SUFFIXES: [&str; 13] = [
+    "c_char",
+    "c_double",
+    "c_float",
+    "c_int",
+    "c_long",
+    "c_longlong",
+    "c_schar",
+    "c_short",
+    "c_uchar",
+    "c_uint",
+    "c_ulong",
+    "c_ulonglong",
+    "c_ushort",
+];
+
+fn is_primitive(ty: &str) -> bool {
+    C_PRIMITIVE_SUFFIXES.iter().any(|p| ty.ends_with(p))
+}
+
+pub fn is_c_type(ty: &str) -> bool {
+    ty == "primitive::ptr" || C_TYPE_PREFIXES.iter().any(|p| ty.starts_with(p))
+}
+
 struct TypeVisitor<'tcx> {
     tcx: TyCtxt<'tcx>,
     types: Vec<String>,
@@ -54,19 +87,21 @@ impl<'tcx> TypeVisitor<'tcx> {
     }
 
     fn def_id_to_string(&self, def_id: DefId) -> Option<String> {
-        if !def_id.is_local() {
-            let cstore = self.tcx.cstore_untracked();
-            let krate = cstore.crate_name(def_id.krate);
-            let krate = krate.as_str();
-            let path = self.tcx.def_path(def_id);
-            if krate == "std" || krate == "alloc" || krate == "core" {
-                let ty = format!("{}{}", krate, path.to_string_no_crate_verbose());
-                if !ty.starts_with("std::os::raw::") && !ty.starts_with("core::ffi::") {
-                    return Some(ty);
-                }
-            }
+        if def_id.is_local() {
+            return None;
         }
-        None
+
+        let cstore = self.tcx.cstore_untracked();
+        let krate = cstore.crate_name(def_id.krate);
+        let krate = krate.as_str();
+        let path = self.tcx.def_path(def_id);
+        let ty = format!("{}{}", krate, path.to_string_no_crate_verbose());
+
+        if is_primitive(&ty) {
+            None
+        } else {
+            Some(ty)
+        }
     }
 }
 
@@ -89,6 +124,7 @@ impl<'tcx> Visitor<'tcx> for TypeVisitor<'tcx> {
     fn visit_ty(&mut self, ty: &'tcx Ty<'tcx>) {
         match &ty.kind {
             TyKind::Slice(_) => self.add("primitive::slice"),
+            TyKind::Ptr(_) => self.add("primitive::ptr"),
             TyKind::Ref(_, _) => self.add("primitive::ref"),
             TyKind::Never => self.add("primitive::never"),
             TyKind::Tup(tys) if tys.len() >= 2 => self.add("primitive::tuple"),
@@ -111,11 +147,12 @@ pub fn run(code: &str) -> Vec<(String, Vec<String>)> {
     let functions = run_compiler(make_config(code), |compiler| {
         compiler.enter(|queries| {
             queries.global_ctxt().ok()?.enter(|tcx| {
+                let source_map = compiler.session().source_map();
                 let hir = tcx.hir();
                 let mut functions = vec![];
                 for id in hir.items() {
                     let item = hir.item(id);
-                    if let ItemKind::Fn(sig, gen, _) = &item.kind {
+                    if let ItemKind::Fn(sig, gen, body_id) = &item.kind {
                         let def_path = tcx.def_path(item.owner_id.to_def_id());
                         let def_path = def_path.to_string_no_crate_verbose();
                         if def_path.starts_with("::__laertes_array::")
@@ -123,6 +160,13 @@ pub fn run(code: &str) -> Vec<(String, Vec<String>)> {
                         {
                             continue;
                         }
+
+                        let body = hir.body(*body_id);
+                        let body = source_map.span_to_snippet(body.value.span).unwrap();
+                        if body == "{todo!(\"proto\")}" {
+                            continue;
+                        }
+
                         let name = item.ident.name.to_ident_string();
                         let mut visitor = TypeVisitor::new(tcx);
                         visitor.visit_fn_decl(sig.decl);
