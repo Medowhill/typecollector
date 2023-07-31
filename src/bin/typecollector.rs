@@ -11,8 +11,20 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    let code = fs::read_to_string(args.input).unwrap();
-    let functions = compiler::run(&code);
+    let mut functions = vec![];
+    for path in files(args.input, "rs") {
+        if path.ends_with("tinycc/bitfields.rs") {
+            continue;
+        }
+        if let Ok(code) = fs::read_to_string(path) {
+            let code = if code.contains("extern crate libc;") {
+                code
+            } else {
+                format!("extern crate libc;{}", code)
+            };
+            functions.extend(compiler::run(&code));
+        }
+    }
 
     let n = functions.len();
     let n1 = functions.iter().filter(|(_, tys)| tys.is_empty()).count();
@@ -33,21 +45,52 @@ fn main() {
         })
         .count();
 
-    let mut tys: BTreeMap<String, usize> = BTreeMap::new();
-    for ty in functions.into_iter().flat_map(|(_, tys)| tys) {
-        if !compiler::is_c_type(&ty) {
-            *tys.entry(ty).or_default() += 1;
+    let mut rtys: BTreeMap<&str, usize> = BTreeMap::new();
+    for ty in functions.iter().flat_map(|(_, tys)| tys) {
+        if !compiler::is_c_type(ty) {
+            *rtys.entry(ty).or_default() += 1;
         }
     }
-    let ty_n = tys.iter().map(|(_, n)| n).sum::<usize>();
-    let ty_kind_n = tys.len();
+    let rty_n = rtys.values().sum::<usize>();
+    let rty_kind_n = rtys.len();
 
-    println!("{} {} {} {} {} {} {}", n, n1, n2, n3, n4, ty_n, ty_kind_n);
+    let mut ctys: BTreeMap<&str, usize> = BTreeMap::new();
+    for ty in functions.iter().flat_map(|(_, tys)| tys) {
+        if compiler::is_c_type(ty) {
+            *ctys.entry(ty).or_default() += 1;
+        }
+    }
+    let cty_n = ctys.values().sum::<usize>();
+    let cty_kind_n = ctys.len();
 
-    let tys_str = tys
+    let rtys_str = rtys
         .into_iter()
         .map(|(ty, n)| format!("{} {}", ty, n))
         .collect::<Vec<_>>()
         .join(", ");
-    println!("{}", tys_str);
+    let ctys_str = ctys
+        .into_iter()
+        .map(|(ty, n)| format!("{} {}", ty, n))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    println!(
+        "{} {} {} {} {} {} {} {} {}",
+        n, n1, n2, n3, n4, rty_n, rty_kind_n, cty_n, cty_kind_n
+    );
+    println!("{}", rtys_str);
+    println!("{}", ctys_str);
+}
+
+fn files(path: PathBuf, ext: &str) -> Vec<PathBuf> {
+    if path.is_dir() {
+        fs::read_dir(path)
+            .unwrap()
+            .flat_map(|entry| files(entry.unwrap().path(), ext))
+            .collect()
+    } else if path.extension().and_then(|x| x.to_str()) == Some(ext) {
+        vec![path]
+    } else {
+        vec![]
+    }
 }

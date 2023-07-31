@@ -162,9 +162,10 @@ pub fn run(code: &str) -> Vec<(String, Vec<String>)> {
                         }
 
                         let body = hir.body(*body_id);
-                        let body = source_map.span_to_snippet(body.value.span).unwrap();
-                        if body == "{todo!(\"proto\")}" {
-                            continue;
+                        if let Ok(body) = source_map.span_to_snippet(body.value.span) {
+                            if body == "{todo!(\"proto\")}" {
+                                continue;
+                            }
                         }
 
                         let name = item.ident.name.to_ident_string();
