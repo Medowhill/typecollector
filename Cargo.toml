@@ -6,6 +6,7 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.1.11", features = ["derive"] }
+indicatif = "0.17.8"
 
 [package.metadata.rust-analyzer]
 rustc_private = true

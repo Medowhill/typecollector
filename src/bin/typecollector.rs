@@ -7,16 +7,17 @@ use typecollector::compiler;
 struct Args {
     input: PathBuf,
 }
+use indicatif::ProgressBar;
 
 fn main() {
     let args = Args::parse();
 
     let mut functions = vec![];
-    for path in files(args.input, "rs") {
+    let paths = files(args.input, "rs");
+    let pb = ProgressBar::new(paths.len() as u64);
+    for path in paths {
         if path.ends_with("tinycc/bitfields.rs") {
-            continue;
-        }
-        if let Ok(code) = fs::read_to_string(path) {
+        } else if let Ok(code) = fs::read_to_string(path) {
             let code = if code.contains("extern crate libc;") {
                 code
             } else {
@@ -24,7 +25,9 @@ fn main() {
             };
             functions.extend(compiler::run(&code));
         }
+        pb.inc(1);
     }
+    pb.finish_and_clear();
 
     let n = functions.len();
     let n1 = functions.iter().filter(|(_, tys)| tys.is_empty()).count();
